@@ -1,6 +1,7 @@
 import { useState } from "react"
 import  ReactMarkdown from 'react-markdown'
 import Head from 'next/head'
+import { createParser } from "eventsource-parser";
 
 const SYSTEM_MESSAGE ="You are a Buddy Bot, a helpful and versatile AI created by Krishna using state-of-art ML models and api's."
 
@@ -18,35 +19,71 @@ export default function Home() {
 
 
   const sendRequest = async () => {
-    // update message history
-    const newMessage = {role:"user", content: userMessage};
-    const newMessages = [
+    const updatedMessages = [
       ...messages,
-      newMessage
-    ]
+      {
+        role: "user",
+        content: userMessage,
+      },
+    ];
 
-    setMessages(newMessages)
+    setMessages(updatedMessages);
     setUserMessage("");
 
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'Authorization':'Bearer '+ apiKey
-      },
-      body:JSON.stringify({
-        "model": "gpt-3.5-turbo",
-        "messages": newMessages
-      })
-    });
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-3.5-turbo",
+          messages: updatedMessages,
+          stream: true,
+        }),
+      });
 
-    const responseJson = await response.json();
-    const newBotMessage = responseJson.choices[0].message;
-    const newMessages2 = [...newMessages, newBotMessage];
+      const reader = response.body.getReader();
 
-    setMessages(newMessages2);
+      let newMessage = "";
+      const parser = createParser((event) => {
+        if (event.type === "event") {
+          const data = event.data;
+          if (data === "[DONE]") {
+            return;
+          }
+          const json = JSON.parse(event.data);
+          const content = json.choices[0].delta.content;
 
-    console.log("Response JSON: ",responseJson)
+          if (!content) {
+            return;
+          }
+
+          newMessage += content;
+
+          const updatedMessages2 = [
+            ...updatedMessages,
+            { role: "assistant", content: newMessage },
+          ];
+
+          setMessages(updatedMessages2);
+        } else {
+          return "";
+        }
+      });
+
+      // eslint-disable-next-line
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = new TextDecoder().decode(value);
+        parser.feed(text);
+      }
+    } catch (error) {
+      console.error("error");
+      window.alert("Error:" + error.message);
+    }
   };
 
   return (
