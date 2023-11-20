@@ -3,11 +3,11 @@ import  ReactMarkdown from 'react-markdown'
 
 const SYSTEM_MESSAGE ="You are a Buddy Bot, a helpful and versatile AI created by Krishna using state-of-art ML models and api's."
 
-// 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
+
 export default function Home() {
 
   // create state variable
-  const [apiKey, setApiKey] = useState("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");
+  const [apiKey, setApiKey] = useState("");
   const [userMessage, setUserMessage] = useState("");
   const [messages, setMessages] = useState([
     {role:"system", content: SYSTEM_MESSAGE}
@@ -65,7 +65,7 @@ export default function Home() {
     <div className="flex-1 overflow-y-scroll">
       <div className="w-full max-w-screen-md mx-auto px-4">
         {messages.filter(message => message.role !== "system").map((message, idx) => (
-          <div key={idx} className="mt-3">
+          <div key={idx} className="my-3">
             <div className="font-bold">
               {message.role === "user" ? "You":"Buddy"}
             </div>
