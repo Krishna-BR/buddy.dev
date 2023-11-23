@@ -1,107 +1,105 @@
 import { useState } from "react"
 import  ReactMarkdown from 'react-markdown'
 import Head from 'next/head'
-import { createParser } from "eventsource-parser";
+//import TextareaAutoSize from "react-textarea-autosize"
+//import { createParser } from "eventsource-parser";
+import Navbar from '@/components/navbar';
+import { useUser } from "@supabase/auth-helpers-react";
+import { streamOpenAIResponse } from "@/utils/openai";
 
-const SYSTEM_MESSAGE ="You are a Buddy Bot, a helpful and versatile AI created by Krishna using state-of-art ML models and api's."
+
+const SYSTEM_MESSAGE ="You are a Buddy Bot, a helpful and versatile AI \
+                       created by Krishna using state-of-art ML models and api's."
 
 
 export default function Home() {
 
   // create state variable
-  const [apiKey, setApiKey] = useState("");
+  const user = useUser();
+
   const [userMessage, setUserMessage] = useState("");
   const [messages, setMessages] = useState([
     {role:"system", content: SYSTEM_MESSAGE}
   ]);
 
-  const API_URL = "https://api.openai.com/v1/chat/completions";
+  const API_URL = "/api/chat";
 
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey){
+      e.preventDefault();
+      sendRequest();
+    }
+  };
 
   const sendRequest = async () => {
-    const updatedMessages = [
-      ...messages,
-      {
-        role: "user",
-        content: userMessage,
-      },
-    ];
 
-    setMessages(updatedMessages);
-    setUserMessage("");
 
-    try {
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
+    if (!user) {
+      alert("Please login to send a message")
+      return;
+    }
+
+
+      if (!userMessage) {
+        alert("Please enter a message before you hit send");
+        return;
+      }
+
+      const oldUserMessage = userMessage;
+      const oldMessages = messages;
+
+      const updatedMessages = [
+        ...messages,
+        {
+          role: "user",
+          content: userMessage,
         },
-        body: JSON.stringify({
-          model: "gpt-3.5-turbo",
-          messages: updatedMessages,
-          stream: true,
-        }),
-      });
+      ];
 
-      const reader = response.body.getReader();
+      setMessages(updatedMessages);
+      setUserMessage("");
 
-      let newMessage = "";
-      const parser = createParser((event) => {
-        if (event.type === "event") {
-          const data = event.data;
-          if (data === "[DONE]") {
-            return;
-          }
-          const json = JSON.parse(event.data);
-          const content = json.choices[0].delta.content;
+      try {
+        const response = await fetch(API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "gpt-3.5-turbo",
+            messages: updatedMessages,
+            stream: true,
+          }),
+        });
 
-          if (!content) {
-            return;
-          }
+        if (response.status !== 200) {
+          throw new Error(
+            `OpenAI API returned an error. Please ensure you've provided the right API key. Check the "Console" or "Network" of your browser's developer tools for details.`
+          );
+        }
 
-          newMessage += content;
-
+        streamOpenAIResponse(response, (newMessage) => {
           const updatedMessages2 = [
             ...updatedMessages,
             { role: "assistant", content: newMessage },
           ];
 
           setMessages(updatedMessages2);
-        } else {
-          return "";
-        }
-      });
+        });
+      } catch (error) {
+        console.error("error", error);
 
-      // eslint-disable-next-line
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const text = new TextDecoder().decode(value);
-        parser.feed(text);
+        setUserMessage(oldUserMessage);
+        setMessages(oldMessages);
+        window.alert("Error:" + error.message);
       }
-    } catch (error) {
-      console.error("error");
-      window.alert("Error:" + error.message);
-    }
   };
-
   return (
   <><Head>
   <title>Buddy - Your friendly neighborhood AI</title></Head>
   <div className="flex flex-col h-screen">
   {/* Navigation Bar */}
-  <nav className="shadow px-4 py-2 flex flex-row justify-between items-center">
-    <div className="text-xl font-bold">Buddy</div>
-    <div>
-      <input 
-        type="password" 
-        className="border p-1 rounded"
-        onChange={e=> setApiKey(e.target.value)}
-        value = {apiKey}
-        placeholder="Paste API Key here"/>
-    </div>
-  </nav>
+  <Navbar/>
   {/* Message History */}
   <div className="flex-1 overflow-y-scroll">
     <div className="w-full max-w-screen-md mx-auto px-4">
@@ -127,6 +125,7 @@ export default function Home() {
       rows={1}/>
       <button 
         className="border text-lg rounded-md p-1 w-20 ml-2 bg-blue-500 hover:bg-blue-600 text-white"
+        onKeyDown = {handleKeyDown}
         onClick={sendRequest}>
         Send
       </button>
